@@ -1,7 +1,7 @@
 {
   "name": "react-native-morph-view",
   "version": "0.1.0",
-  "description": "Morhp views",
+  "description": "Gooey metaball shape-morphing view for React Native (iOS + Android)",
   "main": "./lib/module/index.js",
   "types": "./lib/typescript/src/index.d.ts",
   "exports": {
@@ -43,13 +43,19 @@
   "keywords": [
     "react-native",
     "ios",
-    "android"
+    "android",
+    "morph",
+    "metaball",
+    "gooey",
+    "shader",
+    "animation",
+    "fabric"
   ],
   "repository": {
     "type": "git",
     "url": "git+https://github.com/blazejkustra/react-native-morph-view.git"
   },
-  "author": "Blazej Kustra <blazej.kustra@swmansion.com> (https://github.com/blazejkustra)",
+  "author": "Błażej Kustra <kustrablazej@gmail.com> (https://github.com/blazejkustra)",
   "license": "MIT",
   "bugs": {
     "url": "https://github.com/blazejkustra/react-native-morph-view/issues"

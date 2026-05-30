@@ -8,10 +8,13 @@
 
 #import "RCTFabricComponentsPlugins.h"
 
+// Generated header exposing the Swift `MorphHostView` to this Obj-C++ translation unit.
+#import "MorphView-Swift.h"
+
 using namespace facebook::react;
 
 @implementation MorphViewView {
-    UIView * _view;
+    MorphHostView * _host;
 }
 
 + (ComponentDescriptorProvider)componentDescriptorProvider
@@ -25,9 +28,8 @@ using namespace facebook::react;
     static const auto defaultProps = std::make_shared<const MorphViewViewProps>();
     _props = defaultProps;
 
-    _view = [[UIView alloc] init];
-
-    self.contentView = _view;
+    _host = [[MorphHostView alloc] initWithFrame:frame];
+    self.contentView = _host;
   }
 
   return self;
@@ -38,11 +40,31 @@ using namespace facebook::react;
     const auto &oldViewProps = *std::static_pointer_cast<MorphViewViewProps const>(_props);
     const auto &newViewProps = *std::static_pointer_cast<MorphViewViewProps const>(props);
 
-    if (oldViewProps.color != newViewProps.color) {
-        [_view setBackgroundColor: RCTUIColorFromSharedColor(newViewProps.color)];
+    if (oldViewProps.fromUri != newViewProps.fromUri) {
+        [_host morphSetFromUri:RCTNSStringFromStringNilIfEmpty(newViewProps.fromUri)];
+    }
+    if (oldViewProps.toUri != newViewProps.toUri) {
+        [_host morphSetToUri:RCTNSStringFromStringNilIfEmpty(newViewProps.toUri)];
+    }
+    if (oldViewProps.toggle != newViewProps.toggle) {
+        [_host morphSetToggle:newViewProps.toggle];
+    }
+    if (oldViewProps.blurRadius != newViewProps.blurRadius) {
+        [_host morphSetBlurRadius:newViewProps.blurRadius];
+    }
+    if (oldViewProps.durationMs != newViewProps.durationMs) {
+        [_host morphSetDurationMs:newViewProps.durationMs];
+    }
+    if (oldViewProps.tintColor != newViewProps.tintColor) {
+        [_host morphSetTintColor:RCTUIColorFromSharedColor(newViewProps.tintColor)];
     }
 
     [super updateProps:props oldProps:oldProps];
 }
 
 @end
+
+Class<RCTComponentViewProtocol> MorphViewViewCls(void)
+{
+    return MorphViewView.class;
+}

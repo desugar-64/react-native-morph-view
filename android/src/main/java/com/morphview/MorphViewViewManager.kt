@@ -1,11 +1,9 @@
 package com.morphview
 
-import android.graphics.Color
 import com.facebook.react.module.annotations.ReactModule
 import com.facebook.react.uimanager.SimpleViewManager
 import com.facebook.react.uimanager.ThemedReactContext
 import com.facebook.react.uimanager.ViewManagerDelegate
-import com.facebook.react.uimanager.annotations.ReactProp
 import com.facebook.react.viewmanagers.MorphViewViewManagerInterface
 import com.facebook.react.viewmanagers.MorphViewViewManagerDelegate
 
@@ -18,21 +16,35 @@ class MorphViewViewManager : SimpleViewManager<MorphViewView>(),
     mDelegate = MorphViewViewManagerDelegate(this)
   }
 
-  override fun getDelegate(): ViewManagerDelegate<MorphViewView>? {
-    return mDelegate
+  override fun getDelegate(): ViewManagerDelegate<MorphViewView> = mDelegate
+
+  override fun getName(): String = NAME
+
+  public override fun createViewInstance(context: ThemedReactContext): MorphViewView =
+    MorphViewView(context)
+
+  override fun setFromUri(view: MorphViewView, value: String?) {
+    view.setFromUri(value)
   }
 
-  override fun getName(): String {
-    return NAME
+  override fun setToUri(view: MorphViewView, value: String?) {
+    view.setToUri(value)
   }
 
-  public override fun createViewInstance(context: ThemedReactContext): MorphViewView {
-    return MorphViewView(context)
+  override fun setToggle(view: MorphViewView, value: Boolean) {
+    view.setToggle(value)
   }
 
-  @ReactProp(name = "color")
-  override fun setColor(view: MorphViewView?, color: Int?) {
-    view?.setBackgroundColor(color ?: Color.TRANSPARENT)
+  override fun setBlurRadius(view: MorphViewView, value: Float) {
+    view.setBlurRadius(value)
+  }
+
+  override fun setDurationMs(view: MorphViewView, value: Float) {
+    view.setDurationMs(value)
+  }
+
+  override fun setTintColor(view: MorphViewView, value: Int?) {
+    view.setTintColorInt(value)
   }
 
   companion object {
