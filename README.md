@@ -1,5 +1,7 @@
 # react-native-morph-view
 
+https://github.com/user-attachments/assets/4d66f6e4-369d-44ca-bf58-e3152bc87e5c
+
 A React Native view that smoothly morphs one image into another. Flip a single `toggle` prop and the two shapes blend together with a native shader for a fluid, gooey transition.
 
 - **Real gooey morph on both platforms** — a blur + alpha-threshold shader (Metal on iOS, AGSL on Android) fuses the two silhouettes instead of crossfading them
