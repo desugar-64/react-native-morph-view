@@ -55,10 +55,6 @@ class MorphViewViewManager : SimpleViewManager<MorphViewView>(),
     view.setBorderWidthPt(value)
   }
 
-  override fun setAnimateInitial(view: MorphViewView, value: Boolean) {
-    view.setAnimateInitial(value)
-  }
-
   companion object {
     const val NAME = "MorphViewView"
   }
