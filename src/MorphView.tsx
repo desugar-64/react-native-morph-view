@@ -33,6 +33,17 @@ export interface MorphViewProps extends ViewProps {
    * images' own colors.
    */
   tintColor?: ColorValue;
+  /**
+   * Color of the gooey outline that hugs the morphing silhouette. A border is
+   * drawn only when both `borderColor` is set and `borderWidth` is greater than
+   * 0 — omit `borderColor` (or set `borderWidth` to 0) to disable it.
+   */
+  borderColor?: ColorValue;
+  /**
+   * Thickness of the gooey outline in points. Defaults to 0 (no border).
+   * @default 0
+   */
+  borderWidth?: number;
 }
 
 function resolveUri(source: MorphImageSource): string | undefined {
@@ -69,6 +80,8 @@ export function MorphView({
   blurRadius = 24,
   duration = 600,
   tintColor,
+  borderColor,
+  borderWidth = 0,
   ...rest
 }: MorphViewProps) {
   return (
@@ -79,6 +92,8 @@ export function MorphView({
       blurRadius={blurRadius}
       durationMs={duration}
       tintColor={tintColor}
+      morphBorderColor={borderColor}
+      morphBorderWidth={borderWidth}
       {...rest}
     />
   );

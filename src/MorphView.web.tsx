@@ -23,6 +23,8 @@ export function MorphView({
   blurRadius = 24,
   duration = 600,
   tintColor,
+  borderColor: _borderColor,
+  borderWidth: _borderWidth,
   style,
   ...rest
 }: MorphViewProps) {
@@ -41,7 +43,16 @@ export function MorphView({
     inputRange: [0, 1],
     outputRange: [1, 0],
   });
+  // Blur peaks at midpoint (progress=0.5) and returns to 0 at both ends
   const softBlur = Math.round(blurRadius / 3);
+  const blurFrom = progress.interpolate({
+    inputRange: [0, 0.5, 1],
+    outputRange: [0, softBlur, 0],
+  });
+  const blurTo = progress.interpolate({
+    inputRange: [0, 0.5, 1],
+    outputRange: [0, softBlur, 0],
+  });
   const tint = tintColor ? { tintColor } : null;
 
   return (
@@ -49,14 +60,32 @@ export function MorphView({
       <Animated.Image
         source={{ uri: resolveUri(from) }}
         resizeMode="contain"
-        blurRadius={softBlur}
-        style={[styles.fill, tint, { opacity: fromOpacity }]}
+        style={[
+          styles.fill,
+          tint,
+          {
+            opacity: fromOpacity,
+            filter: blurFrom.interpolate({
+              inputRange: [0, softBlur || 1],
+              outputRange: ['blur(0px)', `blur(${softBlur}px)`],
+            }),
+          },
+        ]}
       />
       <Animated.Image
         source={{ uri: resolveUri(to) }}
         resizeMode="contain"
-        blurRadius={softBlur}
-        style={[styles.fill, tint, { opacity: progress }]}
+        style={[
+          styles.fill,
+          tint,
+          {
+            opacity: progress,
+            filter: blurTo.interpolate({
+              inputRange: [0, softBlur || 1],
+              outputRange: ['blur(0px)', `blur(${softBlur}px)`],
+            }),
+          },
+        ]}
       />
     </Animated.View>
   );

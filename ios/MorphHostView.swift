@@ -11,6 +11,8 @@ final class MorphModel: ObservableObject {
     @Published var blurRadius: CGFloat = 24
     @Published var durationMs: CGFloat = 600
     @Published var tintColor: UIColor?
+    @Published var borderColor: UIColor?
+    @Published var borderWidth: CGFloat = 0
     /// The host view's size in points. Used to pick a decode resolution; quantized via
     /// `sizeBucket` so minor layout jitter doesn't trigger a re-decode.
     @Published var viewSize: CGSize = .zero
@@ -82,12 +84,16 @@ final class MorphModel: ObservableObject {
     @objc public func morphSetBlurRadius(_ radius: CGFloat) { model.blurRadius = radius }
     @objc public func morphSetDurationMs(_ ms: CGFloat) { model.durationMs = ms }
     @objc public func morphSetTintColor(_ color: UIColor?) { model.tintColor = color }
+    @objc public func morphSetBorderColor(_ color: UIColor?) { model.borderColor = color }
+    @objc public func morphSetBorderWidth(_ width: CGFloat) { model.borderWidth = width }
 }
 
-/// Identity for an image-load task: re-decode when either the URI or the size bucket changes.
+/// Identity for an image-load task: re-decode when the URI, size bucket, or border changes.
 private struct TaskKey: Equatable {
     let uri: String?
     let bucket: Int
+    let borderColor: UIColor?
+    let borderWidth: CGFloat
 }
 
 // MARK: - SwiftUI
@@ -122,11 +128,11 @@ struct MorphRootView: View {
                 animatedToggle = newValue
             }
         }
-        .task(id: TaskKey(uri: model.fromUri, bucket: model.sizeBucket)) {
-            fromImage = await loadImage(model.fromUri)
+        .task(id: TaskKey(uri: model.fromUri, bucket: model.sizeBucket, borderColor: model.borderColor, borderWidth: model.borderWidth)) {
+            fromImage = await loadImage(model.fromUri, borderColor: model.borderColor, borderWidth: model.borderWidth, viewSize: model.viewSize)
         }
-        .task(id: TaskKey(uri: model.toUri, bucket: model.sizeBucket)) {
-            toImage = await loadImage(model.toUri)
+        .task(id: TaskKey(uri: model.toUri, bucket: model.sizeBucket, borderColor: model.borderColor, borderWidth: model.borderWidth)) {
+            toImage = await loadImage(model.toUri, borderColor: model.borderColor, borderWidth: model.borderWidth, viewSize: model.viewSize)
         }
     }
 
@@ -148,7 +154,7 @@ struct MorphRootView: View {
         }
     }
 
-    private func loadImage(_ uri: String?) async -> UIImage? {
+    private func loadImage(_ uri: String?, borderColor: UIColor?, borderWidth: CGFloat, viewSize: CGSize) async -> UIImage? {
         guard let uri, let url = URL(string: uri) else { return nil }
         let data: Data?
         if url.isFileURL {
@@ -161,7 +167,75 @@ struct MorphRootView: View {
         // frame, so feeding them a full-resolution bitmap (e.g. a multi-megapixel photo) is the
         // cause of the lag — even when the view is only ~200pt. A thumbnail capped to the view's
         // pixel size keeps each frame cheap; the blur hides the loss of detail anyway.
-        return Self.downsample(data: data, maxPixel: maxPixelSize) ?? UIImage(data: data)
+        let image = Self.downsample(data: data, maxPixel: maxPixelSize) ?? UIImage(data: data)
+        // Bake the border into the image pixels so morphing needs no border shader logic.
+        if let image, let color = borderColor, borderWidth > 0 {
+            return Self.bakeBorder(into: image, color: color, widthPt: borderWidth, viewSize: viewSize)
+        }
+        return image
+    }
+
+    /// Draws a solid border of `widthPt` display-points around the image silhouette, baked into
+    /// the image pixels so the morph shader can remain a plain alpha threshold.
+    ///
+    /// Two correctness concerns are addressed here:
+    /// - **Cutoff**: `CIMorphologyMaximum` clips to its input extent. We pad the canvas by
+    ///   `widthPx` on every side before dilating, then return the slightly larger image. SwiftUI's
+    ///   `scaledToFit` scales the whole bordered image to fit the view, so nothing is clipped.
+    /// - **Resolution mismatch**: different images decode at different pixel densities. We use
+    ///   `effectiveScale = max(imgPx / viewPt)` so the border always appears as `widthPt` points
+    ///   on screen regardless of source resolution.
+    private static func bakeBorder(into image: UIImage, color: UIColor, widthPt: CGFloat, viewSize: CGSize) -> UIImage {
+        guard let cg = image.cgImage else { return image }
+        let scale = image.scale
+        let imgW = CGFloat(cg.width)
+        let imgH = CGFloat(cg.height)
+
+        // How many image pixels equal one display point: the binding scale under scaledToFit.
+        let effectiveScale: CGFloat
+        if viewSize.width > 0, viewSize.height > 0 {
+            effectiveScale = max(imgW / viewSize.width, imgH / viewSize.height)
+        } else {
+            effectiveScale = scale  // fallback before first layout
+        }
+        let widthPx = ceil(widthPt * effectiveScale)
+
+        // Pad the canvas so dilation can expand outward without hitting the extent boundary.
+        let padW = Int(imgW + 2 * widthPx)
+        let padH = Int(imgH + 2 * widthPx)
+        guard let padCtx = CGContext(
+            data: nil, width: padW, height: padH,
+            bitsPerComponent: 8, bytesPerRow: 0,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else { return image }
+        padCtx.draw(cg, in: CGRect(x: widthPx, y: widthPx, width: imgW, height: imgH))
+        guard let paddedCG = padCtx.makeImage() else { return image }
+
+        let paddedCI = CIImage(cgImage: paddedCG)
+
+        // Expand the opaque silhouette outward by widthPx.
+        let dilated = paddedCI.applyingFilter("CIMorphologyMaximum", parameters: [
+            kCIInputRadiusKey: Double(widthPx),
+        ])
+
+        // Recolor: replace all channels with the border color while keeping the dilated alpha.
+        var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 1
+        color.getRed(&r, green: &g, blue: &b, alpha: &a)
+        let colored = dilated.applyingFilter("CIColorMatrix", parameters: [
+            "inputRVector":    CIVector(x: 0, y: 0, z: 0, w: Double(r)),
+            "inputGVector":    CIVector(x: 0, y: 0, z: 0, w: Double(g)),
+            "inputBVector":    CIVector(x: 0, y: 0, z: 0, w: Double(b)),
+            "inputAVector":    CIVector(x: 0, y: 0, z: 0, w: Double(a)),
+            "inputBiasVector": CIVector(x: 0, y: 0, z: 0, w: 0),
+        ])
+
+        // Original on top: covers the inner area, border color shows only in the outer ring.
+        let result = paddedCI.composited(over: colored)
+
+        let ctx = CIContext()
+        guard let outCG = ctx.createCGImage(result, from: result.extent) else { return image }
+        return UIImage(cgImage: outCG, scale: scale, orientation: image.imageOrientation)
     }
 
     /// Longest-side pixel cap for decoded images. Derived from the host view's size (in points)
@@ -195,6 +269,7 @@ struct MorphRootView: View {
 }
 
 /// Animatable blur + gooey alpha-threshold modifier. `progress` animates; `blurRadius` does not.
+/// Borders are baked into image pixels at load time, so this modifier is a pure threshold pass.
 fileprivate struct MorphingModifier: ViewModifier, Animatable {
     var progress: CGFloat
     var blurRadius: CGFloat

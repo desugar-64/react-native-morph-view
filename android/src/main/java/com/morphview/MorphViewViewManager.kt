@@ -47,6 +47,18 @@ class MorphViewViewManager : SimpleViewManager<MorphViewView>(),
     view.setTintColorInt(value)
   }
 
+  override fun setMorphBorderColor(view: MorphViewView, value: Int?) {
+    view.setBorderColorInt(value)
+  }
+
+  override fun setMorphBorderWidth(view: MorphViewView, value: Float) {
+    view.setBorderWidthPt(value)
+  }
+
+  override fun setAnimateInitial(view: MorphViewView, value: Boolean) {
+    view.setAnimateInitial(value)
+  }
+
   companion object {
     const val NAME = "MorphViewView"
   }

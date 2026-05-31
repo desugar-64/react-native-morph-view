@@ -20,6 +20,15 @@ export interface NativeProps extends ViewProps {
   durationMs?: Float;
   /** Optional template tint applied to both images (SF-symbol-like recolor). */
   tintColor?: ColorValue;
+  /**
+   * Color of the gooey outline. Omit (or set width to 0) to draw no border.
+   * NOT named `borderColor`: that key collides with React Native's built-in view
+   * styling, which would draw a second, rectangular CSS border around the view bounds.
+   * The public `MorphView` prop is still `borderColor`; it maps to this name.
+   */
+  morphBorderColor?: ColorValue;
+  /** Thickness of the gooey outline in points. 0 = no border. Renamed off `borderWidth` for the same reason as `morphBorderColor`. */
+  morphBorderWidth?: Float;
 }
 
 export default codegenNativeComponent<NativeProps>('MorphViewView');

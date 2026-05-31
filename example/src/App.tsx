@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import {
   Animated,
   Easing,
+  Image,
   LayoutAnimation,
   Platform,
   Pressable,
@@ -40,6 +41,14 @@ const PHOTOS = {
     uri: 'https://static.vecteezy.com/system/resources/thumbnails/069/732/319/small/two-aa-batteries-crossed-isolated-on-transparent-background-png.png',
   },
 } as const;
+
+// Any-length list the Gallery morphs through — see the Gallery component below.
+const GALLERY: MorphImageSource[] = [
+  SHAPES.blob,
+  SHAPES.star,
+  SHAPES.expo,
+  PHOTOS.from,
+];
 
 /* ------------------------------------------------------------------- theme */
 
@@ -87,8 +96,18 @@ const TINTS: { name: string; value?: ColorValue }[] = [
   { name: 'Indigo', value: '#5E5CE6' },
 ];
 
-const SOURCES = ['Shapes', 'Photo'] as const;
-type Source = (typeof SOURCES)[number];
+const BORDER_COLORS: { name: string; value: ColorValue }[] = [
+  { name: 'White', value: '#FFFFFF' },
+  { name: 'Black', value: 'black' },
+  { name: 'Pink', value: '#FF375F' },
+  { name: 'Blue', value: '#0A84FF' },
+  { name: 'Yellow', value: '#FFD60A' },
+];
+
+type Source = 'Shapes' | 'Photo';
+
+// Top-level examples, switched by the segmented tab bar.
+const TABS = ['Shapes', 'Photo', 'Gallery'] as const;
 
 function pairFor(source: Source): {
   from: MorphImageSource;
@@ -106,22 +125,34 @@ function pairFor(source: Source): {
 
 export default function App() {
   const t = useTheme();
+  const [tab, setTab] = useState(0); // 0 = Shapes, 1 = Photo, 2 = Gallery
   const [toggle, setToggle] = useState(false);
   const [auto, setAuto] = useState(false);
-  const [source, setSource] = useState<Source>('Shapes');
   const [tint, setTint] = useState(0);
   const [blur, setBlur] = useState(60);
   const [duration, setDuration] = useState(700);
+  const [borderOn, setBorderOn] = useState(false);
+  const [borderColorIdx, setBorderColorIdx] = useState(0);
+  const [borderWidth, setBorderWidth] = useState(12);
+
+  const isGallery = tab === 2;
+  const source: Source = tab === 1 ? 'Photo' : 'Shapes';
 
   // Tint only applies to the template-able shapes.
   const tintValue = source === 'Shapes' ? TINTS[tint]!.value : undefined;
+  // A border is drawn only while the switch is on; otherwise the color is
+  // cleared so the native side renders no outline.
+  const borderColorValue = borderOn
+    ? BORDER_COLORS[borderColorIdx]!.value
+    : undefined;
   const { from, to } = pairFor(source);
 
+  // Auto-loop drives the toggle morph; it has no meaning on the gallery tab.
   useEffect(() => {
-    if (!auto) return;
+    if (!auto || isGallery) return;
     const id = setInterval(() => setToggle((v) => !v), duration + 700);
     return () => clearInterval(id);
-  }, [auto, duration]);
+  }, [auto, duration, isGallery]);
 
   // Page-load: a gentle staggered fade + rise, SwiftUI `.transition`-style.
   const intro = useRef(new Animated.Value(0)).current;
@@ -161,85 +192,154 @@ export default function App() {
             Morph View
           </Text>
           <Text style={[styles.lede, { color: t.secondary }]}>
-            Gooey metaball morphing, powered by Metal on iOS and AGSL on
-            Android.
+            Gooey morphing, powered by Metal on iOS and AGSL on Android.
           </Text>
         </Animated.View>
 
-        <Animated.View style={rise(16)}>
-          <Hero
+        <Animated.View style={[rise(12), styles.tabBar]}>
+          <Segmented
             t={t}
-            toggle={toggle}
-            from={from}
-            to={to}
-            blur={blur}
-            duration={duration}
-            tint={tintValue}
-            onPress={() => setToggle((v) => !v)}
+            items={TABS as unknown as string[]}
+            index={tab}
+            onChange={(i) => {
+              LayoutAnimation.configureNext(
+                LayoutAnimation.create(
+                  260,
+                  LayoutAnimation.Types.easeInEaseOut,
+                  LayoutAnimation.Properties.opacity
+                )
+              );
+              setTab(i);
+            }}
           />
         </Animated.View>
 
-        <Animated.View style={rise(20)}>
-          <Section t={t} header="Source">
-            <Segmented
-              t={t}
-              items={SOURCES as unknown as string[]}
-              index={SOURCES.indexOf(source)}
-              onChange={(i) => {
-                LayoutAnimation.configureNext(
-                  LayoutAnimation.create(
-                    260,
-                    LayoutAnimation.Types.easeInEaseOut,
-                    LayoutAnimation.Properties.opacity
-                  )
-                );
-                setSource(SOURCES[i]!);
-              }}
-            />
-          </Section>
-        </Animated.View>
+        {isGallery ? (
+          <>
+            <Animated.View style={rise(16)}>
+              <View
+                style={[
+                  styles.galleryCard,
+                  shadow(t),
+                  { backgroundColor: t.card },
+                ]}
+              >
+                <Gallery t={t} blur={blur} duration={duration} />
+              </View>
+            </Animated.View>
 
-        {source === 'Shapes' && (
-          <Animated.View style={rise(24)}>
-            <Section
-              t={t}
-              header="Tint"
-              footer="Recolors template shapes, like an SF Symbol."
-            >
-              <Swatches t={t} index={tint} onChange={setTint} />
-            </Section>
-          </Animated.View>
+            <Animated.View style={rise(20)}>
+              <Section
+                t={t}
+                header="Adjustments"
+                footer="The gallery morphs through an any-length list using just MorphView's two slots — tap a thumbnail to morph into it."
+              >
+                <Row t={t} title="Blur radius" value={`${blur} pt`}>
+                  <Stepper
+                    t={t}
+                    onDec={() => setBlur((v) => Math.max(0, v - 4))}
+                    onInc={() => setBlur((v) => Math.min(60, v + 4))}
+                  />
+                </Row>
+                <Row t={t} title="Duration" value={`${duration} ms`} last>
+                  <Stepper
+                    t={t}
+                    onDec={() => setDuration((v) => Math.max(100, v - 100))}
+                    onInc={() => setDuration((v) => Math.min(2000, v + 100))}
+                  />
+                </Row>
+              </Section>
+            </Animated.View>
+          </>
+        ) : (
+          <>
+            <Animated.View style={rise(16)}>
+              <Hero
+                t={t}
+                toggle={toggle}
+                from={from}
+                to={to}
+                blur={blur}
+                duration={duration}
+                tint={tintValue}
+                borderColor={borderColorValue}
+                borderWidth={borderWidth}
+                onPress={() => setToggle((v) => !v)}
+              />
+            </Animated.View>
+
+            {source === 'Shapes' && (
+              <Animated.View style={rise(20)}>
+                <Section
+                  t={t}
+                  header="Tint"
+                  footer="Recolors template shapes, like an SF Symbol."
+                >
+                  <Swatches t={t} index={tint} onChange={setTint} />
+                </Section>
+              </Animated.View>
+            )}
+
+            <Animated.View style={rise(28)}>
+              <Section t={t} header="Border">
+                <Row t={t} title="Enable border" last={!borderOn}>
+                  <Switch
+                    value={borderOn}
+                    onValueChange={setBorderOn}
+                    trackColor={{ true: t.accent }}
+                  />
+                </Row>
+                {borderOn ? (
+                  <>
+                    <Row t={t} title="Width" value={`${borderWidth} pt`}>
+                      <Stepper
+                        t={t}
+                        onDec={() => setBorderWidth((v) => Math.max(0, v - 2))}
+                        onInc={() => setBorderWidth((v) => Math.min(40, v + 2))}
+                      />
+                    </Row>
+                    <Swatches
+                      t={t}
+                      items={BORDER_COLORS}
+                      index={borderColorIdx}
+                      onChange={setBorderColorIdx}
+                    />
+                  </>
+                ) : null}
+              </Section>
+            </Animated.View>
+
+            <Animated.View style={rise(24)}>
+              <Section
+                t={t}
+                header="Adjustments"
+                footer="Blur peaks at the midpoint of the morph — larger values look goopier."
+              >
+                <Row t={t} title="Auto-loop">
+                  <Switch
+                    value={auto}
+                    onValueChange={setAuto}
+                    trackColor={{ true: t.accent }}
+                  />
+                </Row>
+                <Row t={t} title="Blur radius" value={`${blur} pt`}>
+                  <Stepper
+                    t={t}
+                    onDec={() => setBlur((v) => Math.max(0, v - 4))}
+                    onInc={() => setBlur((v) => Math.min(60, v + 4))}
+                  />
+                </Row>
+                <Row t={t} title="Duration" value={`${duration} ms`} last>
+                  <Stepper
+                    t={t}
+                    onDec={() => setDuration((v) => Math.max(100, v - 100))}
+                    onInc={() => setDuration((v) => Math.min(2000, v + 100))}
+                  />
+                </Row>
+              </Section>
+            </Animated.View>
+          </>
         )}
-
-        <Animated.View style={rise(28)}>
-          <Section
-            t={t}
-            header="Adjustments"
-            footer="Blur peaks at the midpoint of the morph — larger values look goopier."
-          >
-            <Row t={t} title="Auto-loop">
-              <Switch
-                value={auto}
-                onValueChange={setAuto}
-                trackColor={{ true: t.accent }}
-              />
-            </Row>
-            <Row t={t} title="Blur radius" value={`${blur} pt`}>
-              <Stepper
-                t={t}
-                onDec={() => setBlur((v) => Math.max(0, v - 4))}
-                onInc={() => setBlur((v) => Math.min(60, v + 4))}
-              />
-            </Row>
-            <Row t={t} title="Duration" value={`${duration} ms`} last>
-              <Stepper
-                t={t}
-                onDec={() => setDuration((v) => Math.max(100, v - 100))}
-                onInc={() => setDuration((v) => Math.min(2000, v + 100))}
-              />
-            </Row>
-          </Section>
-        </Animated.View>
 
         <Text style={[styles.footnote, { color: t.tertiary }]}>
           react-native-morph-view
@@ -259,6 +359,8 @@ function Hero({
   blur,
   duration,
   tint,
+  borderColor,
+  borderWidth,
   onPress,
 }: {
   t: Theme;
@@ -268,6 +370,8 @@ function Hero({
   blur: number;
   duration: number;
   tint?: ColorValue;
+  borderColor?: ColorValue;
+  borderWidth: number;
   onPress: () => void;
 }) {
   const scale = useRef(new Animated.Value(1)).current;
@@ -303,6 +407,8 @@ function Hero({
             blurRadius={blur}
             duration={duration}
             tintColor={tint}
+            borderColor={borderColor}
+            borderWidth={borderWidth}
             style={styles.morph}
           />
         </View>
@@ -314,6 +420,75 @@ function Hero({
         </View>
       </Animated.View>
     </Pressable>
+  );
+}
+
+/* ----------------------------------------------------------------- gallery */
+
+// Morphs through an arbitrary-length list using only the two slots MorphView exposes.
+// Each tap writes the chosen image into the hidden slot, then flips `toggle` so the
+// visible image morphs into it — see the explanation in the README/usage notes.
+function Gallery({
+  t,
+  blur,
+  duration,
+}: {
+  t: Theme;
+  blur: number;
+  duration: number;
+}) {
+  const [from, setFrom] = useState<MorphImageSource>(GALLERY[0]!);
+  const [to, setTo] = useState<MorphImageSource>(GALLERY[0]!);
+  const [toggle, setToggle] = useState(false); // false → showing `from`
+  const [selected, setSelected] = useState(0);
+
+  const select = (i: number) => {
+    if (i === selected) return; // already on screen — nothing to morph to
+    const img = GALLERY[i]!;
+    if (toggle) {
+      // `to` is visible → load into the hidden `from`, then morph back to it
+      setFrom(img);
+      setToggle(false);
+    } else {
+      // `from` is visible → load into the hidden `to`, then morph to it
+      setTo(img);
+      setToggle(true);
+    }
+    setSelected(i);
+  };
+
+  return (
+    <View>
+      <View style={[styles.galleryCanvas, { backgroundColor: t.canvasBottom }]}>
+        <MorphView
+          toggle={toggle}
+          from={from}
+          to={to}
+          blurRadius={blur}
+          duration={duration}
+          style={styles.galleryMorph}
+        />
+      </View>
+      <View style={styles.galleryThumbs}>
+        {GALLERY.map((img, i) => (
+          <Pressable
+            key={i}
+            onPress={() => select(i)}
+            style={[
+              styles.galleryThumbRing,
+              // eslint-disable-next-line react-native/no-inline-styles
+              { borderColor: selected === i ? t.accent : 'transparent' },
+            ]}
+          >
+            <Image
+              source={img}
+              resizeMode="contain"
+              style={[styles.galleryThumb, { backgroundColor: t.fill }]}
+            />
+          </Pressable>
+        ))}
+      </View>
+    </View>
   );
 }
 
@@ -411,42 +586,41 @@ function Segmented({
   const onLayout = (e: LayoutChangeEvent) => setW(e.nativeEvent.layout.width);
 
   return (
-    <View style={styles.segmentWrap}>
-      <View
-        onLayout={onLayout}
-        style={[styles.segmentTrack, { backgroundColor: t.fill }]}
-      >
-        {seg > 0 && (
-          <Animated.View
+    <View
+      onLayout={onLayout}
+      style={[styles.segmentTrack, { backgroundColor: t.fill }]}
+    >
+      {seg > 0 && (
+        <Animated.View
+          style={[
+            styles.segmentThumb,
+            shadow(t),
+            {
+              width: seg,
+              backgroundColor: t.segmentThumb,
+              transform: [{ translateX: Animated.multiply(pos, seg) }],
+            },
+          ]}
+        />
+      )}
+      {items.map((item, i) => (
+        <Pressable
+          key={item}
+          style={styles.segment}
+          onPress={() => onChange(i)}
+        >
+          <Text
             style={[
-              styles.segmentThumb,
-              shadow(t),
-              {
-                width: seg,
-                backgroundColor: t.segmentThumb,
-                transform: [{ translateX: Animated.multiply(pos, seg) }],
-              },
+              styles.segmentText,
+              // eslint-disable-next-line react-native/no-inline-styles
+              { color: t.label, opacity: i === index ? 1 : 0.6 },
+              i === index && styles.segmentTextActive,
             ]}
-          />
-        )}
-        {items.map((item, i) => (
-          <Pressable
-            key={item}
-            style={styles.segment}
-            onPress={() => onChange(i)}
           >
-            <Text
-              style={[
-                styles.segmentText,
-                { color: t.label, opacity: i === index ? 1 : 0.6 },
-                i === index && styles.segmentTextActive,
-              ]}
-            >
-              {item}
-            </Text>
-          </Pressable>
-        ))}
-      </View>
+            {item}
+          </Text>
+        </Pressable>
+      ))}
     </View>
   );
 }
@@ -489,14 +663,16 @@ function Swatches({
   t,
   index,
   onChange,
+  items = TINTS,
 }: {
   t: Theme;
   index: number;
   onChange: (i: number) => void;
+  items?: { name: string; value?: ColorValue }[];
 }) {
   return (
     <View style={styles.swatches}>
-      {TINTS.map((item, i) => {
+      {items.map((item, i) => {
         const selected = i === index;
         const isOriginal = item.value === undefined;
         return (
@@ -508,6 +684,7 @@ function Swatches({
             <View
               style={[
                 styles.swatchRing,
+                // eslint-disable-next-line react-native/no-inline-styles
                 { borderColor: selected ? t.accent : 'transparent' },
               ]}
             >
@@ -520,7 +697,11 @@ function Swatches({
                         borderColor: t.separator,
                         borderWidth: StyleSheet.hairlineWidth,
                       }
-                    : { backgroundColor: item.value as string },
+                    : {
+                        backgroundColor: item.value as string,
+                        borderColor: t.separator,
+                        borderWidth: StyleSheet.hairlineWidth,
+                      },
                 ]}
               >
                 {isOriginal ? (
@@ -572,14 +753,11 @@ const styles = StyleSheet.create({
     fontSize: 34,
     fontWeight: '700',
     letterSpacing: 0.37,
-    marginHorizontal: 4,
   },
   lede: {
     fontSize: 15,
     lineHeight: 20,
     marginTop: 6,
-    marginHorizontal: 4,
-    marginBottom: 22,
   },
 
   hero: { borderRadius: 22, padding: 16, alignItems: 'center' },
@@ -610,6 +788,31 @@ const styles = StyleSheet.create({
   },
   dot: { width: 6, height: 6, borderRadius: 3 },
   heroHint: { fontSize: 13, fontWeight: '500', letterSpacing: -0.08 },
+
+  tabBar: { marginVertical: 16 },
+  galleryCard: { borderRadius: 22, padding: 16 },
+  galleryCanvas: {
+    width: '100%',
+    height: 200,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  galleryMorph: { width: 150, height: 150 },
+  galleryThumbs: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  galleryThumbRing: {
+    width: 60,
+    height: 60,
+    borderRadius: 15,
+    borderWidth: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  galleryThumb: { width: 48, height: 48, borderRadius: 10, padding: 4 },
 
   section: { marginTop: 26 },
   sectionHeader: {
@@ -644,7 +847,6 @@ const styles = StyleSheet.create({
     fontVariant: ['tabular-nums'],
   },
 
-  segmentWrap: { padding: 8 },
   segmentTrack: {
     height: 32,
     borderRadius: 9,

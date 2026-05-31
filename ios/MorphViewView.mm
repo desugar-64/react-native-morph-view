@@ -58,6 +58,12 @@ using namespace facebook::react;
     if (oldViewProps.tintColor != newViewProps.tintColor) {
         [_host morphSetTintColor:RCTUIColorFromSharedColor(newViewProps.tintColor)];
     }
+    if (oldViewProps.morphBorderColor != newViewProps.morphBorderColor) {
+        [_host morphSetBorderColor:RCTUIColorFromSharedColor(newViewProps.morphBorderColor)];
+    }
+    if (oldViewProps.morphBorderWidth != newViewProps.morphBorderWidth) {
+        [_host morphSetBorderWidth:newViewProps.morphBorderWidth];
+    }
 
     [super updateProps:props oldProps:oldProps];
 }
