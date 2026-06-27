@@ -46,7 +46,7 @@ class MorphViewView : View {
   private var animator: ValueAnimator? = null
 
   // Async backends invalidate the view off-thread when a new frame is ready.
-  private val renderer = MorphRenderer.create { postInvalidateOnAnimation() }
+  private val renderer = MorphRenderer.create(context) { postInvalidateOnAnimation() }
 
   private val ioExecutor = Executors.newCachedThreadPool()
   private val mainHandler = Handler(Looper.getMainLooper())

@@ -8,6 +8,7 @@ import android.os.Build
 import android.os.Handler
 import android.os.HandlerThread
 import androidx.annotation.RequiresApi
+import com.morphview.internal.gl.SwapChain
 import java.util.ArrayDeque
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -35,7 +36,7 @@ internal class HardwareBufferMorphRenderer(
 
     // GL-thread-confined.
     private var pipeline: MorphGlPipeline? = null
-    private val leases = ArrayDeque<MorphGlPipeline.Lease>()
+    private val leases = ArrayDeque<SwapChain.Lease>()
 
     // Latest requested frame: UI thread writes, GL thread reads.
     @Volatile
@@ -81,15 +82,22 @@ internal class HardwareBufferMorphRenderer(
     }
 
     override fun release() {
+        val thread = glThread ?: return // never started, or already released — nothing to reset
         displayBitmap = null
         glHandler?.post {
             pipeline?.release()
             pipeline = null
             while (leases.isNotEmpty()) leases.removeFirst().close()
         }
-        glThread?.quitSafely()
         glThread = null
         glHandler = null
+        // Drain the GL thread before returning so a re-attach can't race this teardown for pipeline/leases.
+        thread.quitSafely()
+        thread.join()
+        // Reset submit state, or a re-attach at the same size/progress never re-renders.
+        lastSubmitted = null
+        pending = null
+        renderScheduled.set(false)
     }
 
     private fun ensureThread() {
@@ -123,7 +131,7 @@ internal class HardwareBufferMorphRenderer(
      * GL thread. Lazily creates the pipeline and renders [req]. Returns null if GL initialisation or
      * the render fails (e.g. context loss) — the caller skips the frame and retries on the next draw.
      */
-    private fun produceLease(req: RenderRequest): MorphGlPipeline.Lease? = try {
+    private fun produceLease(req: RenderRequest): SwapChain.Lease? = try {
         val gl = pipeline ?: MorphGlPipeline().also { pipeline = it }
         gl.render(req.width, req.height, req.from, req.to, req.progress, req.blurRadiusPx, req.tintColor)
     } catch (e: Exception) {

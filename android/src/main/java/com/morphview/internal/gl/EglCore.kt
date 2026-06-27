@@ -25,8 +25,9 @@ internal class EglCore {
 
     init {
         display = EGL14.eglGetDisplay(EGL14.EGL_DEFAULT_DISPLAY)
+        check(display != EGL14.EGL_NO_DISPLAY) { "eglGetDisplay returned no display" }
         val version = IntArray(2)
-        EGL14.eglInitialize(display, version, 0, version, 1)
+        check(EGL14.eglInitialize(display, version, 0, version, 1)) { "eglInitialize failed" }
         val configAttr = intArrayOf(
             // Require an ES 3.0-capable config — the pipeline needs VAOs and GLSL ES 3.00.
             EGL14.EGL_RENDERABLE_TYPE, EGLExt.EGL_OPENGL_ES3_BIT_KHR,
@@ -39,11 +40,15 @@ internal class EglCore {
         )
         val configs = arrayOfNulls<EGLConfig>(1)
         val numConfig = IntArray(1)
-        EGL14.eglChooseConfig(display, configAttr, 0, configs, 0, 1, numConfig, 0)
+        check(
+            EGL14.eglChooseConfig(display, configAttr, 0, configs, 0, 1, numConfig, 0) &&
+                numConfig[0] > 0 && configs[0] != null,
+        ) { "no ES3-capable EGL config" }
         config = configs[0]
         // EGL_CONTEXT_CLIENT_VERSION = 3 creates an OpenGL ES 3.0 context.
         val contextAttr = intArrayOf(EGL14.EGL_CONTEXT_CLIENT_VERSION, 3, EGL14.EGL_NONE)
         context = EGL14.eglCreateContext(display, config, EGL14.EGL_NO_CONTEXT, contextAttr, 0)
+        check(context != EGL14.EGL_NO_CONTEXT) { "eglCreateContext failed" }
     }
 
     fun createWindowSurface(surface: Surface): EGLSurface =

@@ -1,5 +1,7 @@
 package com.morphview.internal
 
+import android.app.ActivityManager
+import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Paint
@@ -48,13 +50,21 @@ internal interface MorphRenderer {
 
     companion object {
         /** [onFrameReady] is invoked (possibly off the main thread) when an async backend has a frame. */
-        fun create(onFrameReady: () -> Unit): MorphRenderer {
+        fun create(context: Context, onFrameReady: () -> Unit): MorphRenderer {
             val sdk = Build.VERSION.SDK_INT
             return when {
                 sdk >= Build.VERSION_CODES.TIRAMISU -> RenderEffectMorphRenderer()
-                sdk >= Build.VERSION_CODES.Q -> HardwareBufferMorphRenderer(onFrameReady)
+                sdk >= Build.VERSION_CODES.Q && supportsGlEs3(context) -> HardwareBufferMorphRenderer(onFrameReady)
                 else -> CrossfadeMorphRenderer()
             }
+        }
+
+        // The floor for the GL morph (VAOs, GLSL ES 3.00).
+        private const val GL_ES_3_0 = 0x30000
+
+        private fun supportsGlEs3(context: Context): Boolean {
+            val am = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+            return am.deviceConfigurationInfo.reqGlEsVersion >= GL_ES_3_0
         }
     }
 }
