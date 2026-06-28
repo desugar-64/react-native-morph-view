@@ -8,32 +8,24 @@ import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.PorterDuff
 import android.graphics.PorterDuffColorFilter
-import android.graphics.RectF
-import android.graphics.RenderEffect
-import android.graphics.RenderNode
-import android.graphics.RuntimeShader
-import android.graphics.Shader
-import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.util.AttributeSet
 import android.view.View
 import android.view.animation.PathInterpolator
+import com.morphview.internal.MorphRenderer
 import java.net.URL
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicInteger
-import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.ceil
 import kotlin.math.cos
-import kotlin.math.min
 import kotlin.math.sin
-import kotlin.math.sqrt
 
 /**
- * Gooey "metaball" morph between two images. Both images are drawn into a single [RenderNode] that
- * carries the blur + alpha-threshold [RenderEffect], and only that node is drawn to screen — so the
- * crossfade and the effect are always committed in the same frame and the raw image never flashes.
+ * Gooey "metaball" morph between two images. This view owns image loading, the crossfade animation,
+ * and the optional baked border; the actual effect (crossfade → blur → alpha-threshold) is delegated
+ * to a [MorphRenderer] whose backend is chosen per API level in [MorphRenderer.create].
  */
 class MorphViewView : View {
 
@@ -53,19 +45,8 @@ class MorphViewView : View {
   private var progress: Float = 0f
   private var animator: ValueAnimator? = null
 
-  private val shader: RuntimeShader? =
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-      RuntimeShader(ALPHA_THRESHOLD_SHADER)
-    } else {
-      null
-    }
-
-  private val contentNode: RenderNode? =
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) RenderNode("morph") else null
-
-  private val drawPaint = Paint(Paint.FILTER_BITMAP_FLAG or Paint.ANTI_ALIAS_FLAG)
-  private val dstRect = RectF()
-  private var tintFilter: PorterDuffColorFilter? = null
+  // Async backends invalidate the view off-thread when a new frame is ready.
+  private val renderer = MorphRenderer.create(context) { postInvalidateOnAnimation() }
 
   private val ioExecutor = Executors.newCachedThreadPool()
   private val mainHandler = Handler(Looper.getMainLooper())
@@ -116,7 +97,6 @@ class MorphViewView : View {
 
   fun setTintColorInt(color: Int?) {
     tintColor = color
-    tintFilter = color?.let { PorterDuffColorFilter(it, PorterDuff.Mode.SRC_IN) }
     invalidate()
   }
 
@@ -150,71 +130,15 @@ class MorphViewView : View {
     }
   }
 
+  /** Effect parameters are recomputed from [progress] by the renderer in [onDraw]; just redraw. */
   private fun applyProgress() {
-    // sqrt(sin) has a vertical tangent at the ends, so any motion off rest is already heavily
-    // blurred — a transition interrupted near completion can't flash a crisp, un-fused image.
-    val blurProgress = sqrt(sin(progress * PI.toFloat()))
-    val radiusPx = blurProgress * blurRadius * density
-
-    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU || shader == null) {
-      invalidate()
-      return
-    }
-
-    shader.setFloatUniform("threshold", 0.5f)
-    val thresholdEffect = RenderEffect.createRuntimeShaderEffect(shader, "composable")
-    // 0.5px floor keeps the same effect chain at rest instead of toggling it on/off at 0 and 1.
-    val effectiveRadius = radiusPx.coerceAtLeast(0.5f)
-    val blurEffect = RenderEffect.createBlurEffect(effectiveRadius, effectiveRadius, Shader.TileMode.DECAL)
-    // createChainEffect(outer, inner): blur runs first, then the threshold.
-    contentNode?.setRenderEffect(RenderEffect.createChainEffect(thresholdEffect, blurEffect))
     invalidate()
   }
 
   // MARK: - Drawing
 
   override fun onDraw(canvas: Canvas) {
-    val node = contentNode
-    if (node == null || Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU || shader == null ||
-      !canvas.isHardwareAccelerated || width <= 0 || height <= 0
-    ) {
-      // Fallback (pre-API-33 or software canvas): plain crossfade, no morph effect.
-      drawImage(canvas, fromBitmap, 1f - progress)
-      drawImage(canvas, toBitmap, progress)
-      return
-    }
-
-    node.setPosition(0, 0, width, height)
-    val recordingCanvas = node.beginRecording()
-    try {
-      drawImage(recordingCanvas, fromBitmap, 1f - progress)
-      drawImage(recordingCanvas, toBitmap, progress)
-    } finally {
-      node.endRecording()
-    }
-    canvas.drawRenderNode(node)
-  }
-
-  /** Draws [bmp] centered and scaled-to-fit (ImageView FIT_CENTER) at the given [alpha]. */
-  private fun drawImage(canvas: Canvas, bmp: Bitmap?, alpha: Float) {
-    if (bmp == null || alpha <= 0.001f) return
-
-    val vw = width.toFloat()
-    val vh = height.toFloat()
-    val bw = bmp.width.toFloat()
-    val bh = bmp.height.toFloat()
-    if (vw <= 0f || vh <= 0f || bw <= 0f || bh <= 0f) return
-
-    val scale = min(vw / bw, vh / bh)
-    val dw = bw * scale
-    val dh = bh * scale
-    val left = (vw - dw) / 2f
-    val top = (vh - dh) / 2f
-    dstRect.set(left, top, left + dw, top + dh)
-
-    drawPaint.alpha = (alpha * 255f).toInt().coerceIn(0, 255)
-    drawPaint.colorFilter = tintFilter
-    canvas.drawBitmap(bmp, null, dstRect, drawPaint)
+    renderer.draw(canvas, width, height, fromBitmap, toBitmap, progress, blurRadius * density, tintColor)
   }
 
   // MARK: - Image loading
@@ -323,24 +247,10 @@ class MorphViewView : View {
   override fun onDetachedFromWindow() {
     super.onDetachedFromWindow()
     animator?.cancel()
+    renderer.release()
   }
 
   companion object {
     private val MORPH_INTERPOLATOR = PathInterpolator(0.42f, 0f, 0.58f, 1f)
-
-    private const val ALPHA_THRESHOLD_SHADER = """
-      uniform shader composable;
-      uniform float threshold;
-
-      half4 main(float2 coord) {
-        half4 color = composable.eval(coord);
-        if (color.a < 0.001) {
-          return half4(0.0);
-        }
-        half alpha = smoothstep(threshold - 0.05, threshold + 0.05, color.a);
-        half3 straight = color.rgb / color.a;
-        return half4(straight * alpha, alpha);
-      }
-    """
   }
 }
